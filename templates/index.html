@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fake News Detector</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <h1>🔍 Fake News Detector</h1>
+      <p>Paste a news article or headline. Four ML models analyze it and return a weighted ensemble verdict.</p>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Input Card -->
+    <div class="card">
+      <label for="news-input">News article or headline</label>
+      <textarea id="news-input" placeholder="Paste your news text here..."></textarea>
+      <div class="row">
+        <button id="analyze-btn" onclick="analyze()">Analyze →</button>
+        <button class="clear-btn" onclick="clearAll()">Clear</button>
+        <span id="word-count">0 words</span>
+      </div>
+      <div class="examples">
+        <span>Try example:</span>
+        <button class="chip" onclick="loadExample(0)">Real news</button>
+        <button class="chip" onclick="loadExample(1)">Fake news</button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <span>Analyzing with 4 ML models...</span>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" class="error-box hidden"></div>
+
+    <!-- Result Card -->
+    <div id="result" class="card hidden">
+
+      <div class="verdict-row">
+        <span id="verdict-badge" class="badge"></span>
+        <span id="verdict-label" class="verdict-label"></span>
+      </div>
+
+      <div class="conf-section">
+        <div class="conf-labels">
+          <span>Ensemble confidence</span>
+          <span id="conf-val"></span>
+        </div>
+        <div class="bar-bg">
+          <div id="conf-bar" class="bar-fill"></div>
+        </div>
+        <div id="vote-summary" class="vote-summary"></div>
+      </div>
+
+      <h3>Individual Model Results</h3>
+      <div id="model-grid" class="model-grid"></div>
+
+    </div>
+
+  </main>
+
+  <footer>
+    <p>Multimodal Fake News Detection System · Galgotias College of Engineering & Technology</p>
+  </footer>
+
+  <script>
+    const EXAMPLES = [
+      "Scientists at Johns Hopkins University published findings in the New England Journal of Medicine showing that a Mediterranean diet significantly reduces the risk of heart disease by 30 percent in adults over 50. The peer-reviewed study followed 7,000 participants over five years and was funded by the National Institutes of Health.",
+      "SHOCKING TRUTH: Government secretly putting mind control chemicals in tap water! A brave whistleblower has revealed the deep state has been drugging citizens since 2001. Mainstream media won't cover this. Share before it gets deleted! Doctors don't want you to know. Wake up sheeple!"
+    ];
+
+    const textarea = document.getElementById("news-input");
+
+    textarea.addEventListener("input", () => {
+      const words = textarea.value.trim().split(/\s+/).filter(w => w).length;
+      document.getElementById("word-count").textContent = words + " words";
+    });
+
+    function loadExample(i) {
+      textarea.value = EXAMPLES[i];
+      textarea.dispatchEvent(new Event("input"));
+      textarea.focus();
+    }
+
+    function clearAll() {
+      textarea.value = "";
+      textarea.dispatchEvent(new Event("input"));
+      document.getElementById("result").classList.add("hidden");
+      document.getElementById("error-box").classList.add("hidden");
+    }
+
+    async function analyze() {
+      const text = textarea.value.trim();
+      if (!text) return;
+
+      const btn = document.getElementById("analyze-btn");
+      btn.disabled = true;
+      document.getElementById("loading").classList.remove("hidden");
+      document.getElementById("result").classList.add("hidden");
+      document.getElementById("error-box").classList.add("hidden");
+
+      try {
+        const resp = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+
+        const data = await resp.json();
+
+        if (data.error) {
+          showError(data.error);
+          return;
+        }
+
+        renderResult(data);
+
+      } catch (e) {
+        showError("Something went wrong. Make sure the server is running.");
+      } finally {
+        btn.disabled = false;
+        document.getElementById("loading").classList.add("hidden");
+      }
+    }
+
+    function showError(msg) {
+      const box = document.getElementById("error-box");
+      box.textContent = "⚠ " + msg;
+      box.classList.remove("hidden");
+    }
+
+    function renderResult(data) {
+      const badge     = document.getElementById("verdict-badge");
+      const label     = document.getElementById("verdict-label");
+      const confVal   = document.getElementById("conf-val");
+      const confBar   = document.getElementById("conf-bar");
+      const voteSumm  = document.getElementById("vote-summary");
+      const modelGrid = document.getElementById("model-grid");
+
+      const map = {
+        FAKE:      { text: "FAKE",      label: "Likely Fake News",        cls: "fake"      },
+        REAL:      { text: "REAL",      label: "Likely Real News",         cls: "real"      },
+        UNCERTAIN: { text: "UNCERTAIN", label: "Uncertain — Needs Review", cls: "uncertain" }
+      };
+
+      const v = map[data.verdict] || map["UNCERTAIN"];
+      badge.textContent  = v.text;
+      badge.className    = "badge " + v.cls;
+      label.textContent  = v.label;
+      label.className    = "verdict-label " + v.cls;
+
+      const conf = data.ensemble_confidence;
+      confVal.textContent    = conf + "%";
+      confBar.style.width    = conf + "%";
+      confBar.className      = "bar-fill " + v.cls;
+
+      voteSumm.textContent =
+        data.real_votes + " model(s) voted REAL  ·  " + data.fake_votes + " model(s) voted FAKE";
+
+      modelGrid.innerHTML = data.models.map(m => `
+        <div class="model-card">
+          <div class="model-name">${m.model}</div>
+          <div class="model-verdict ${m.verdict.toLowerCase()}">${m.verdict}</div>
+          <div class="model-conf">${m.confidence}% confidence</div>
+        </div>
+      `).join("");
+
+      document.getElementById("result").classList.remove("hidden");
+      document.getElementById("result").scrollIntoView({ behavior: "smooth" });
+    }
+  </script>
+
+</body>
+</html>

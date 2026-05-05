@@ -1,0 +1,20 @@
+# Dataset
+archive/
+
+# Trained models (too large for GitHub)
+models/
+
+# Python virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
