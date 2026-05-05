@@ -2,21 +2,29 @@ from flask import Flask, render_template, request, jsonify
 import joblib
 import re
 import string
+import os
 
 app = Flask(__name__)
 
-# ── Load models once at startup ────────────────────────────────────────
-print("Loading models...")
-vectorizer = joblib.load("models/vectorizer.pkl")
-models = {
-    "Logistic Regression": joblib.load("models/logistic_regression.pkl"),
-    "Random Forest":       joblib.load("models/random_forest.pkl"),
-    "XGBoost":             joblib.load("models/xgboost.pkl"),
-    "LightGBM":            joblib.load("models/lightgbm.pkl"),
-}
-print("All models loaded successfully.")
+# ── Lazy load models (saves RAM) ───────────────────────────────────────
+vectorizer = None
+models = {}
 
-# ── Text cleaning (must match train.py) ───────────────────────────────
+def load_models():
+    global vectorizer, models
+    if vectorizer is None:
+        print("Loading vectorizer...")
+        vectorizer = joblib.load("models/vectorizer.pkl")
+        print("Loading models one by one...")
+        models = {
+            "Logistic Regression": joblib.load("models/logistic_regression.pkl"),
+            "Random Forest":       joblib.load("models/random_forest.pkl"),
+            "XGBoost":             joblib.load("models/xgboost.pkl"),
+            "LightGBM":            joblib.load("models/lightgbm.pkl"),
+        }
+        print("All models loaded.")
+
+# ── Text cleaning ──────────────────────────────────────────────────────
 def clean_text(text):
     text = str(text).lower()
     text = re.sub(r"http\S+|www\S+", "", text)
@@ -33,6 +41,8 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    load_models()
+
     data = request.get_json()
     text = data.get("text", "").strip()
 
@@ -57,7 +67,6 @@ def predict():
             "confidence": confidence
         })
 
-    # Ensemble: majority vote
     fake_votes = sum(votes)
     real_votes = len(votes) - fake_votes
     ensemble_confidence = round((max(real_votes, fake_votes) / len(votes)) * 100, 1)
